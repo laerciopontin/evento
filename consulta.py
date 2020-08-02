@@ -1,6 +1,7 @@
 import pymysql
 import nltk
 from googlesearch import *
+import re 
 import webbrowser
 
 #realiza a busca das palavras informadas pelo usuário
@@ -10,20 +11,23 @@ def buscaMaisPalavras(consulta):
     listaclausulas = ''
     palavrasid = []
     
-    palavras = consulta.split(' ')
+    
+    
+    palavras = separaPalavras(consulta).split(' ')
     numerotabela = 1
     for palavra in palavras:
-        idpalavra = getIdPalavra(palavra)
-        if idpalavra > 0:
-            palavrasid.append(idpalavra)
-            if numerotabela > 1:
-                listatabelas += ', '
-                listaclausulas += ' and '
-                listaclausulas += 'p%d.idstring = p%d.idstring and ' % (numerotabela - 1, numerotabela)
-            listacampos += ', p%d.localizacao' % numerotabela
-            listatabelas += 'palavra_localizacao p%d' % numerotabela
-            listaclausulas += 'p%d.idpalavra = %d' % (numerotabela, idpalavra)
-            numerotabela += 1
+        if palavra != '':
+            idpalavra = getIdPalavra(palavra)
+            if idpalavra > 0:
+                palavrasid.append(idpalavra)
+                if numerotabela > 1:
+                    listatabelas += ', '
+                    listaclausulas += ' and '
+                    listaclausulas += 'p%d.idstring = p%d.idstring and ' % (numerotabela - 1, numerotabela)
+                listacampos += ', p%d.localizacao' % numerotabela
+                listatabelas += 'palavra_localizacao p%d' % numerotabela
+                listaclausulas += 'p%d.idpalavra = %d' % (numerotabela, idpalavra)
+                numerotabela += 1
     consultacompleta = 'select %s from %s where %s' % (listacampos, listatabelas, listaclausulas)
     
     conexao = pymysql.connect(host='localhost', user='root', passwd='laercio01', db='indice')
@@ -34,6 +38,24 @@ def buscaMaisPalavras(consulta):
     cursor.close()
     conexao.close()
     return linhas, palavrasid
+
+def separaPalavras(texto):    
+    stop = nltk.corpus.stopwords.words('portuguese')
+    #biblioteca com lista de palavras ditas stopwords     
+    splitter = re.compile('\\W+')
+    #pega apenas palavras, retirando caracteres que não sejam (diminui a numerosidade)    
+    palavras = ''
+    lista = [p for p in splitter.split(texto) if p != ' ']
+    #percorre todas as palavras de um texto e quebra as palavras desconsiderando os espaços vazios !=' '
+    for p in lista:
+        if p.lower() not in stop:
+        #não insere na lista palavras ditas stopwords
+            if len(p) > 1:
+            #retira palavras com 1 caracter    
+                palavras = palavras + ' ' + p.lower()
+                #carrega os radicais da palavras na lista 
+    return palavras
+
 
 #busca a palavra pelo ser radical
 def getIdPalavra(palavra):
@@ -113,12 +135,15 @@ def textoLinkScore(linhas, palavrasid):
     return contagem
     
 def normalizaMaior(notas):
-    menor = 0.00001
-    maximo = max(notas.values())
-    #evita erro de divisão por 0 zero
-    if maximo == 0:
-        maximo = menor
-    return dict([(id, float(nota)/maximo) for (id, nota) in notas.items()])
+   try:
+       menor = 0.00001
+       maximo = max(notas.values())
+       #evita erro de divisão por 0 zero
+       if maximo == 0:
+           maximo = menor
+       return dict([(id, float(nota)/maximo) for (id, nota) in notas.items()])
+   except :
+        return ''
 
 def normalizaMenor(notas):
     menor = 0.1
@@ -130,28 +155,32 @@ def normalizaMenor(notas):
 def pesquisaPeso(consulta):
     linhas , palavrasId = buscaMaisPalavras(consulta)
     totalScores = dict([linha[0], 0] for linha in linhas)    
-    pesos = [(1.0, frequenciaScore(linhas)),
-             (1.0, localizacaoScore(linhas)),
-             (1.0, distanciaScore(linhas)),
-            # (1.0, contagemLinksScore(linhas)),
-             #(1.0, textoLinkScore(linhas, palavrasId))
-             ]
-    for(peso, scores) in pesos:
-        for string in totalScores:
-            totalScores[string] +=peso*scores[string]
-    
-    scoreordenado = sorted([(score, string) for (string,score) in totalScores.items()], reverse = 1)
-    for(score, idstring) in scoreordenado:
-        print('%f\t%s' % (score, getString(idstring)))
-        return getString(idstring)
+    if frequenciaScore(linhas) == '':
+        consulta = consulta+" no ensino fundamental sem anuncio"
+    else:
+        pesos = [(1.0, frequenciaScore(linhas)),
+                 (1.0, localizacaoScore(linhas)),
+                 (1.0, distanciaScore(linhas)),
+                # (1.0, contagemLinksScore(linhas)),
+                 #(1.0, textoLinkScore(linhas, palavrasId))
+                 ]
+        for(peso, scores) in pesos:
+            for string in totalScores:
+                totalScores[string] +=peso*scores[string]
         
+        scoreordenado = sorted([(score, string) for (string,score) in totalScores.items()], reverse = 1)
+        for(score, idstring) in scoreordenado:
+            #print('%f\t%s' % (score, getString(idstring)))
+            return getString(idstring)
+    print(consulta)    
     return consulta
 
 #to search, will ask search query at the time of execution
-query = input("Input your query:")
-#iexplorer_path = r'C:\Program Files (x86)\Internet Explorer\iexplore.exe %s'
+query = input("O que quer buscar? ")
+#iexplorer_path = r'C:\Program Files (x86)Como foi o surgimento das primeiras civilizações\Internet Explorer\iexplore.exe %s'
 chrome_path = r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe %s'
 for url in search(query, tld="co.in", num=1, stop = 1, pause = 2):
+    print('A String ideal segundo BNCC é: ' + str(pesquisaPeso(query)))
     webbrowser.open("https://google.com/search?q=%s" % pesquisaPeso(query))   
 
 
